@@ -13,6 +13,7 @@ int main(int argc, char *argv[]) {
     int threads = 1;
     char *rangeLow;
     char *rangeHigh;
+    char *filename;
 
 // Arg flags
     int c, errflag = 0, rangeMinFlag = 0, rangeMaxFlag = 0, threadFlag = 0;
@@ -49,12 +50,12 @@ int main(int argc, char *argv[]) {
             case ':':
                 fprintf(stderr, "Option -%c requires an argument\n", optopt);
                 errflag++;
-                return 1;
+                break;
 
             case '?':
                 fprintf(stderr, "Unrecognised option: -%c\n", optopt);
                 errflag++;
-                return 1;
+                break;
 
             default:
                 fprintf(stderr, HELP_TEXT);
@@ -64,6 +65,15 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, HELP_TEXT);
             exit(2);
         }
+    }
+
+    if (optind < argc) {
+        filename = argv[optind++];
+        printf("%s", filename);
+    } else {
+        fprintf(stderr, "ERROR: Filename operand missing\n");
+        fprintf(stderr, HELP_TEXT);
+        exit(3);
     }
 
     if (threadFlag) {

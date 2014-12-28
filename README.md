@@ -14,7 +14,7 @@ C-Bruteforce
 
 # Running the program
 ```
-Usage:	bruteforce <encrypted filename> [OPTIONS]
+Usage:	./bruteforce [OPTIONS] <encrypted filename>
 
 OPTIONS:
 	-m	Brute force starting integer (eg. 0000)
