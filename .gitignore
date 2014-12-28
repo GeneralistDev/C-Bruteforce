@@ -27,10 +27,16 @@
 *.i*86
 *.x86_64
 *.hex
-main
+bruteforce
 
 # Vagrant
 .vagrant/
 
 # Encrypted
 encrypt.txt
+
+# Build Directory
+build/
+
+# IntelliJ
+.idea/
