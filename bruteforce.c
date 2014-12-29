@@ -14,14 +14,26 @@
 */
 
 // The set of characters that make up the password (global variable)
-const char g_charset[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+char g_charset[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 const int charsetLength = 10;
+
+void nthInSequence(int n, size_t sequenceLength, char* sequenceItem, int calcTotal) {
+    for (int i = 0; i < sequenceLength; i++) {
+        sequenceItem[i] = '0';
+        if (n > 0) {
+            calcTotal /= 10;
+            int value = n / calcTotal;
+            n %= calcTotal;
+            sequenceItem[i] = '0' + value;
+        }
+    }
+}
 
 /**
 * Calculate where in the sequence of generated permutations for a fixed length sequence the
 * given sequenceItem occurs. This is used to find out how many sequences are left to generate.
 */
-int numberInSequence(int sequenceLength, char *sequenceItem, int calcTotal) {
+int numberInSequence(size_t sequenceLength, char *sequenceItem, int calcTotal) {
     int numberInSequence = 0;
 
     for (int i = 0; i < sequenceLength; i++) {
@@ -40,8 +52,8 @@ int numberInSequence(int sequenceLength, char *sequenceItem, int calcTotal) {
 * have an even load over the number of threads requested.
 */
 int divisionOfWork(int threads, char *rangeLow, char *rangeHigh) {
-    int lowLength = strlen(rangeLow);
-    int highLength = strlen(rangeHigh);
+    size_t lowLength = strlen(rangeLow);
+    size_t highLength = strlen(rangeHigh);
 
     int totalInSequence;
     int permutationsToCalculate = 0;
@@ -78,7 +90,7 @@ int divisionOfWork(int threads, char *rangeLow, char *rangeHigh) {
         permutationsToCalculate += rangeHighIndex + 1;
 
         // then add the remaining sequences in between if there are any
-        for (int currentLength = lowLength + 1; currentLength < highLength; currentLength++) {
+        for (size_t currentLength = lowLength + 1; currentLength < highLength; currentLength++) {
             totalInSequence = (int) pow((double) charsetLength, (double) currentLength);
             permutationsToCalculate += totalInSequence;
         }
@@ -87,8 +99,133 @@ int divisionOfWork(int threads, char *rangeLow, char *rangeHigh) {
     }
 }
 
-void openFile(char *filename) {
+int iterateIndividualDigit(char **stringPointers, size_t index) {
+    if (*stringPointers[index] == '9') {
+        stringPointers[index] = &g_charset[0];
+        iterateIndividualDigit(stringPointers, index-1);
+    } else {
+        stringPointers[index] = stringPointers[index] + sizeof(char*);
+    }
+}
+// Returns 1 if it has exhausted all
+int iteratePointers(char **stringPointers, size_t *sequenceLength) {
+    char *endMark = NULL;
+    char *current = NULL;
+    endMark = malloc(sizeof(*sequenceLength));
+    current = malloc(sizeof(*sequenceLength));
 
+    strncpy(current, *stringPointers, *sequenceLength);
+
+    for (int i = 0; i < *sequenceLength; i++) {
+        endMark[i] = '9';
+    }
+
+
+    // If we're at the end return 1
+    if (strcmp(current, endMark)) {
+        // Zero all the stringPointers
+        for (int i = 0; i < *sequenceLength; i++) {
+            stringPointers[i] = &g_charset[0];
+        }
+        free(current);
+        free(endMark);
+        return 1;
+    }
+
+    iterateIndividualDigit(stringPointers, *sequenceLength);
+
+    free(endMark);
+    return 0;
+}
+
+// Returns 1 if the password fails or 0 if it passes (-1 if there is a fatal error)
+int checkPassword(char **stringPointers, size_t *sequenceLength, char* encryptedFilename) {
+    char coreCommand[] = "./fdecrypt ";
+
+    size_t coreCommandLength = strlen(coreCommand);
+    size_t filenameLength = strlen(encryptedFilename);
+    size_t commandLength = coreCommandLength + filenameLength + *sequenceLength + 1;
+
+    char *command = NULL;
+    char *password = NULL;
+
+    command = malloc(sizeof(char) * commandLength);
+    password = malloc(sizeof(char) * *sequenceLength);
+
+    for (size_t i = 0; i < *sequenceLength; i++) {
+        password[i] = *stringPointers[i];
+    }
+
+    strncat(command, coreCommand, commandLength);
+    strncat(command, encryptedFilename, commandLength);
+    strncat(command, password, commandLength);
+
+    int result = system(command);
+    free(command);
+    free(password);
+
+    return result;
+}
+
+// Returns 1 if rangeHigh is greater than the current stringPointers location
+int rangeExceeded(char **stringPointers, size_t *sequenceLength, char* rangeHigh) {
+    if (*sequenceLength > strlen(rangeHigh)) {
+        return 1;
+    }
+    for (int i = 0; i < *sequenceLength - 1; i++){
+        if (*stringPointers[i] > rangeHigh[i]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void bruteForceRange(char *rangeLow, char *rangeHigh, char* encryptedFilename) {
+    size_t currentSequenceLength = strlen(rangeLow);
+    size_t numPointers = strlen(rangeHigh);
+    char **stringPointers = NULL;
+
+    // Create the string pointers
+    stringPointers = malloc(sizeof(char*) * numPointers + 1);
+
+    // Point them all at the rangeLow values in the charset
+    for (int i = 0; i < numPointers; i++) {
+        stringPointers[i] = &g_charset[(rangeLow[i] - '0')];
+    }
+
+    do {
+        checkPassword(stringPointers, &currentSequenceLength, encryptedFilename);
+        if (iteratePointers(stringPointers, &currentSequenceLength)) {
+            currentSequenceLength++;
+        }
+    } while (!rangeExceeded(stringPointers, &currentSequenceLength, rangeHigh));
+
+    free(stringPointers);
+}
+
+void calculateRange(int thread, int permutationsPerThread, char *rangeLow, char* rangeHigh, size_t maxSequenceLength) {
+    char *currentRangeLow = NULL;
+    currentRangeLow = malloc(sizeof(char) * maxSequenceLength);
+    strcpy(currentRangeLow, rangeLow);
+
+    size_t currentSequenceLength = strlen(rangeLow);
+
+    int countDown;
+    // Loop until the countdown has finished
+    countDown = permutationsPerThread;
+    do {
+        int totalForSequence = (int) pow((double) charsetLength, (double) currentSequenceLength);
+        if (totalForSequence - numberInSequence(currentSequenceLength, rangeLow, totalForSequence) != totalForSequence) {
+            //countDown
+        }
+        if (totalForSequence - countDown > 0) {
+            nthInSequence(countDown, currentSequenceLength, rangeHigh, totalForSequence);
+        } else {
+            currentSequenceLength++;
+        }
+        countDown - totalForSequence;
+    } while (countDown > 0);
+    free(currentRangeLow);
 }
 
 /**
@@ -101,11 +238,15 @@ int main(int argc, char *argv[]) {
     char *rangeHigh;
     char *filename;
 
+    int permutationsPerThread = 0;
+
     // Arg flags
     int c, errflag = 0, rangeMinFlag = 0, rangeMaxFlag = 0, threadFlag = 0;
 
     extern char *optarg;
     extern int optind, opterr, optopt;
+
+    int *pipeFD = NULL;
 
     pid_t *childPIDs = NULL;
     pid_t pID;
@@ -173,14 +314,29 @@ int main(int argc, char *argv[]) {
         printf("Range high: %s\n", rangeHigh);
         printf("Range low: %s\n", rangeLow);
 
-        printf("Suggested permutations per thread: %i\n", divisionOfWork(threads, rangeLow, rangeHigh));
+        permutationsPerThread = divisionOfWork(threads, rangeLow, rangeHigh);
+    } else {
+        fprintf(stderr, "ERROR: Must specify beginning and end range values\n");
+        exit(3);
     }
 
     childPIDs = malloc(threads * sizeof(pid_t));
+    // All the forks share the same pipe to the parent
+    pipeFD = malloc((sizeof(int) * 2));
+    pipe(pipeFD);
 
     for (int i = 0; i < threads; i++){
+        char info[2];
+        info[0] = i + '0';
+        info[1] = '\0';
+        write(pipeFD[1], info, 2 );
+
         if ((pID = fork()) == 0 ) {
             printf("I am the child process. pID: %i\n", pID);
+            char buf[2];
+            read(pipeFD[0], buf, 2);
+            buf[1] = '\0';
+            printf("%s\n", buf);
             exit(0);
         } if (pID > 0) {
             childPIDs[i] = pID;
@@ -211,5 +367,7 @@ int main(int argc, char *argv[]) {
     } while (stillWaiting);
 
     free(childPIDs);
+    free(pipeFD);
+
     exit(0);
 }
